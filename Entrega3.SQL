@@ -72,13 +72,6 @@ INSERT INTO Vendas (data_venda, id_cliente) VALUES
 ('2023-11-22 16:20:00', 4),
 ('2023-11-22 18:00:00', 5);
 
-INSERT INTO Itens_Venda (id_venda, id_produto, quantidade, preco_unitario) VALUES 
-(1, 1, 2, 45.90),
-(2, 2, 5, 8.50),
-(3, 3, 1, 12.00),
-(4, 4, 3, 22.90),
-(5, 5, 2, 9.50);
-
 DROP USER IF EXISTS 'OperadorCaixa1'@'%';
 CREATE USER 'OperadorCaixa1'@'%' IDENTIFIED BY 'senhaCaixa01';
 
@@ -91,34 +84,49 @@ CREATE ROLE 'Perfil_Atendimento';
 GRANT SELECT, INSERT ON DB_Supermercado_Novo.* TO 'Perfil_Atendimento';
 
 GRANT 'Perfil_Atendimento' TO 'OperadorCaixa1'@'%', 'OperadorCaixa2'@'%';
-SET DEFAULT ROLE 'Perfil_Atendimento' TO 'OperadorCaixa1'@'%', 'OperadorCaixa2'@'%';
+
+SET DEFAULT ROLE 'Perfil_Atendimento'
+TO 'OperadorCaixa1'@'%', 'OperadorCaixa2'@'%';
 
 DELIMITER $$
 
 DROP PROCEDURE IF EXISTS sp_cadastrar_cliente $$
-CREATE PROCEDURE sp_cadastrar_cliente(p_nome VARCHAR(100), p_cpf VARCHAR(15))
+
+CREATE PROCEDURE sp_cadastrar_cliente(
+    p_nome VARCHAR(100),
+    p_cpf VARCHAR(15)
+)
 BEGIN
-    INSERT INTO Clientes (nome, cpf) VALUES (p_nome, p_cpf);
+    INSERT INTO Clientes (nome, cpf)
+    VALUES (p_nome, p_cpf);
 END $$
 
 DROP TRIGGER IF EXISTS trg_atualiza_estoque $$
+
 CREATE TRIGGER trg_atualiza_estoque
 AFTER INSERT ON Itens_Venda
 FOR EACH ROW
 BEGIN
     DECLARE estoque_atual INT;
-    
-    SELECT estoque INTO estoque_atual FROM Produtos WHERE id = NEW.id_produto;
-    
+
+    SELECT estoque
+    INTO estoque_atual
+    FROM Produtos
+    WHERE id = NEW.id_produto;
+
     IF estoque_atual >= NEW.quantidade THEN
-        UPDATE Produtos 
-        SET estoque = estoque - NEW.quantidade 
+        UPDATE Produtos
+        SET estoque = estoque - NEW.quantidade
         WHERE id = NEW.id_produto;
     END IF;
 END $$
 
 DROP FUNCTION IF EXISTS fn_total_item $$
-CREATE FUNCTION fn_total_item(p_quantidade INT, p_preco DECIMAL(10,2))
+
+CREATE FUNCTION fn_total_item(
+    p_quantidade INT,
+    p_preco DECIMAL(10,2)
+)
 RETURNS DECIMAL(10,2)
 DETERMINISTIC
 BEGIN
@@ -127,10 +135,28 @@ END $$
 
 DELIMITER ;
 
-GRANT EXECUTE ON PROCEDURE DB_Supermercado_Novo.sp_cadastrar_cliente TO 'Perfil_Atendimento';
-GRANT EXECUTE ON FUNCTION DB_Supermercado_Novo.fn_total_item TO 'Perfil_Atendimento';
+INSERT INTO Itens_Venda (
+    id_venda,
+    id_produto,
+    quantidade,
+    preco_unitario
+) VALUES 
+(1, 1, 2, 45.90),
+(2, 2, 5, 8.50),
+(3, 3, 1, 12.00),
+(4, 4, 3, 22.90),
+(5, 5, 2, 9.50);
+
+GRANT EXECUTE ON PROCEDURE
+DB_Supermercado_Novo.sp_cadastrar_cliente
+TO 'Perfil_Atendimento';
+
+GRANT EXECUTE ON FUNCTION
+DB_Supermercado_Novo.fn_total_item
+TO 'Perfil_Atendimento';
 
 DROP VIEW IF EXISTS vw_relatorio_vendas;
+
 CREATE VIEW vw_relatorio_vendas AS
 SELECT 
     v.id AS numero_venda,
@@ -139,6 +165,9 @@ SELECT
     i.quantidade,
     fn_total_item(i.quantidade, i.preco_unitario) AS total_item
 FROM Vendas v
-INNER JOIN Clientes c ON v.id_cliente = c.id
-INNER JOIN Itens_Venda i ON v.id = i.id_venda
-INNER JOIN Produtos p ON i.id_produto = p.id;
+INNER JOIN Clientes c
+    ON v.id_cliente = c.id
+INNER JOIN Itens_Venda i
+    ON v.id = i.id_venda
+INNER JOIN Produtos p
+    ON i.id_produto = p.id;
