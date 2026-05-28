@@ -19,8 +19,8 @@ CREATE TABLE Clientes (
 CREATE TABLE Produtos (
     id INT NOT NULL AUTO_INCREMENT,
     nome VARCHAR(100) NOT NULL,
-    preco DECIMAL(10,2) NOT NULL,
-    estoque INT NOT NULL,
+    preco DECIMAL(10,2) NOT NULL CHECK (preco >= 0),
+    estoque INT NOT NULL CHECK (estoque >= 0),
     id_fornecedor INT NOT NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (id_fornecedor) REFERENCES Fornecedores(id)
@@ -37,8 +37,8 @@ CREATE TABLE Vendas (
 CREATE TABLE Itens_Venda (
     id_venda INT NOT NULL,
     id_produto INT NOT NULL,
-    quantidade INT NOT NULL,
-    preco_unitario DECIMAL(10,2) NOT NULL,
+    quantidade INT NOT NULL CHECK (quantidade > 0),
+    preco_unitario DECIMAL(10,2) NOT NULL CHECK (preco_unitario >= 0),
     PRIMARY KEY (id_venda, id_produto),
     FOREIGN KEY (id_venda) REFERENCES Vendas(id),
     FOREIGN KEY (id_produto) REFERENCES Produtos(id)
@@ -87,6 +87,7 @@ CREATE USER 'OperadorCaixa2'@'%' IDENTIFIED BY 'senhaCaixa02';
 
 DROP ROLE IF EXISTS 'Perfil_Atendimento';
 CREATE ROLE 'Perfil_Atendimento';
+
 GRANT SELECT, INSERT ON DB_Supermercado_Novo.* TO 'Perfil_Atendimento';
 
 GRANT 'Perfil_Atendimento' TO 'OperadorCaixa1'@'%', 'OperadorCaixa2'@'%';
@@ -105,12 +106,29 @@ CREATE TRIGGER trg_atualiza_estoque
 AFTER INSERT ON Itens_Venda
 FOR EACH ROW
 BEGIN
-    UPDATE Produtos 
-    SET estoque = estoque - NEW.quantidade 
-    WHERE id = NEW.id_produto;
+    DECLARE estoque_atual INT;
+    
+    SELECT estoque INTO estoque_atual FROM Produtos WHERE id = NEW.id_produto;
+    
+    IF estoque_atual >= NEW.quantidade THEN
+        UPDATE Produtos 
+        SET estoque = estoque - NEW.quantidade 
+        WHERE id = NEW.id_produto;
+    END IF;
+END $$
+
+DROP FUNCTION IF EXISTS fn_total_item $$
+CREATE FUNCTION fn_total_item(p_quantidade INT, p_preco DECIMAL(10,2))
+RETURNS DECIMAL(10,2)
+DETERMINISTIC
+BEGIN
+    RETURN p_quantidade * p_preco;
 END $$
 
 DELIMITER ;
+
+GRANT EXECUTE ON PROCEDURE DB_Supermercado_Novo.sp_cadastrar_cliente TO 'Perfil_Atendimento';
+GRANT EXECUTE ON FUNCTION DB_Supermercado_Novo.fn_total_item TO 'Perfil_Atendimento';
 
 DROP VIEW IF EXISTS vw_relatorio_vendas;
 CREATE VIEW vw_relatorio_vendas AS
@@ -119,7 +137,7 @@ SELECT
     c.nome AS cliente,
     p.nome AS produto,
     i.quantidade,
-    (i.quantidade * i.preco_unitario) AS total_item
+    fn_total_item(i.quantidade, i.preco_unitario) AS total_item
 FROM Vendas v
 INNER JOIN Clientes c ON v.id_cliente = c.id
 INNER JOIN Itens_Venda i ON v.id = i.id_venda
